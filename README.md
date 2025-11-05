@@ -24,7 +24,8 @@ minigit status
 # Stage files
 minigit add story.txt
 
-# Check status (shows staged changes)  
+# Check status (shows stag<img width="512" height="512" alt="rust-logo-512x512" src="https://github.com/user-attachments/assets/207d540d-2b08-40d7-b223-15745ee7970f" />
+ed changes)  
 minigit status
 
 # Commit
@@ -42,7 +43,7 @@ text
 
 ## 4. Final project structure check:
 
-Your project should now have:
+
 minigit/
 ├── src/
 │ ├── commands/
