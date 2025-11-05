@@ -1,21 +1,69 @@
-MiniGit - A Minimal Git Implementation in Rust
-A educational implementation of core Git functionality in Rust, designed to demonstrate data structures and algorithms used in version control systems.
 
-🚀 Features Implemented
-Core VCS Functionality
-Object Database: Content-addressable storage for blobs, trees, and commits
+## 🚀 Features
 
-Hashing: Blake3 for content-based addressing (like Git's SHA-1)
+### Core Commands
+- `init` - Initialize a new repository
+- `add <file>` - Stage files for commit  
+- `commit -m <message>` - Create new commits
+- `log` - Display commit history
+- `status` - Show staged/unstaged changes ← **NEW**
+- `diff` - Show line-by-line changes ← **NEW**
 
-Staging Area: JSON-backed index for tracking changes
+## Example Workflow
 
-Commit History: Directed acyclic graph (DAG) of commits with parent pointers
+```bash
+# Initialize
+minigit init
 
-Commands
-init - Initialize a new repository
+# Create files
+echo "Hello World" > story.txt
 
-add - Stage files for commit
+# Check status (shows untracked files)
+minigit status
 
-commit - Create new commits with author, message, and timestamp
+# Stage files
+minigit add story.txt
 
-log - Display commit history
+# Check status (shows staged changes)  
+minigit status
+
+# Commit
+minigit commit -m "Add initial story"
+
+# Make changes
+echo "New chapter" >> story.txt
+
+# See what changed
+minigit diff
+
+# View history
+minigit log
+text
+
+## 4. Final project structure check:
+
+Your project should now have:
+minigit/
+├── src/
+│ ├── commands/
+│ │ ├── init.rs
+│ │ ├── add.rs
+│ │ ├── commit.rs
+│ │ ├── log.rs
+│ │ ├── status.rs ← NEW
+│ │ └── diff.rs ← NEW
+│ ├── cli/
+│ ├── core/
+│ └── index/
+├── tests/ ← NEW
+├── .gitignore
+└── README.md
+
+text
+
+## 5. Push everything to GitHub:
+
+```cmd
+git add .
+git commit -m "docs: Update README with new features"
+git push
