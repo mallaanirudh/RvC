@@ -1,21 +1,63 @@
-MiniGit - A Minimal Git Implementation in Rust
-A educational implementation of core Git functionality in Rust, designed to demonstrate data structures and algorithms used in version control systems.
+# 🦀 RvC (Rust Version Control)
 
-🚀 Features Implemented
-Core VCS Functionality
-Object Database: Content-addressable storage for blobs, trees, and commits
+A  reimplementation of **Git**, written entirely in **Rust**.  
+RvC showcases how version control systems manage commits, diffs, and file tracking under the hood — in a compact, understandable codebase.
 
-Hashing: Blake3 for content-based addressing (like Git's SHA-1)
+---
 
-Staging Area: JSON-backed index for tracking changes
+## 🚀 Features
 
-Commit History: Directed acyclic graph (DAG) of commits with parent pointers
+### Core Commands
+| Command | Description |
+|----------|--------------|
+| `init` | Initialize a new repository |
+| `add <file>` | Stage files for commit |
+| `commit -m <message>` | Create a new commit |
+| `log` | Display commit history |
+| `status` | Show staged and unstaged changes |
+| `diff` | Show line-by-line differences between working tree and index |
 
-Commands
-init - Initialize a new repository
+---
 
-add - Stage files for commit
+## 🧩 Example Workflow
 
-commit - Create new commits with author, message, and timestamp
+```bash
+# Initialize repository
+minigit init
 
-log - Display commit history
+# Create a file
+echo "Hello World" > story.txt
+
+# Check status (shows untracked files)
+minigit status
+
+# Stage files
+minigit add story.txt
+
+# Verify staged files
+minigit status
+
+# Commit
+minigit commit -m "Add initial story"
+
+# Modify file
+echo "New chapter" >> story.txt
+
+# View file changes
+minigit diff
+
+# Display commit history
+minigit log
+⚙️ Installation
+# Clone repository
+git clone https://github.com/mallaanirudh/RvC.git
+cd RvC/minigit
+
+# Build the binary
+cargo build --release
+
+# Run the CLI (on Windows)
+./target/release/minigit.exe
+
+# Or during development
+cargo run -- [command]
