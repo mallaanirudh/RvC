@@ -1,7 +1,7 @@
 # Rust build artifacts
 target/
 **/*.rs.bk
-
+test-workspace/
 # Cargo output
 Cargo.lock
 

@@ -12,6 +12,8 @@ fn main() -> Result<()> {
         commands::Commands::Add { path } => commands::add::execute(&cwd, &path)?,
         commands::Commands::Commit { message } => commands::commit::execute(&cwd, &message)?,
         commands::Commands::Log => commands::log::execute(&cwd)?,
+        commands::Commands::Status => commands::status::execute(&cwd)?, 
+        commands::Commands::Diff => commands::diff::execute(&cwd)?, 
     }
 
     Ok(())

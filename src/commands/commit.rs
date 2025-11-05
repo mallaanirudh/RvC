@@ -5,7 +5,6 @@ use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Remove: pub struct CommitCommand { pub message: String }
 
 pub fn execute(repo: &Path, message: &str) -> Result<()> {
     let store = FsObjectStore::new(repo);

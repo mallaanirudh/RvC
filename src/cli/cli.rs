@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "minigit")]
+#[command(name = "rvc")]
 #[command(about = "Minimal Git-like VCS for DSA demonstration", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -18,4 +18,6 @@ pub enum Commands {
         message: String,
     },
     Log,
+    Status,
+    Diff,
 }
