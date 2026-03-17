@@ -47,11 +47,7 @@ fn show_file_diff(
     if !file_path_buf.exists() {
         return Ok(());
     }
-
-    // Read file as bytes first to check if it's text
     let current_content_bytes = fs::read(&file_path_buf)?;
-    
-    // Try to read as UTF-8, if it fails, treat as binary
     let current_content = match String::from_utf8(current_content_bytes.clone()) {
         Ok(text) => text,
         Err(_) => {
@@ -65,7 +61,7 @@ fn show_file_diff(
 
     let current_lines: Vec<String> = current_content.lines().map(|s| s.to_string()).collect();
     
-    // Get the committed version (if any)
+    // Get the committed version 
     let committed_content_bytes = if let Some(commit_oid) = head_commit_oid {
         get_file_content_from_commit_bytes(commit_oid, file_path, store).ok()
     } else {
@@ -130,9 +126,9 @@ fn get_file_content_from_commit_bytes(commit_oid: &str, file_path: &str, store: 
 
 #[derive(Debug)]
 enum DiffLine {
-    Added(String, usize),    // Line added, line number in new file
-    Removed(String, usize),  // Line removed, line number in old file  
-    Unchanged(String, usize), // Line unchanged, line number
+    Added(String, usize),    
+    Removed(String, usize),   
+    Unchanged(String, usize), 
 }
 
 fn compute_diff(old_lines: &[String], new_lines: &[String]) -> Vec<DiffLine> {
@@ -155,7 +151,6 @@ fn compute_diff(old_lines: &[String], new_lines: &[String]) -> Vec<DiffLine> {
             diff.push(DiffLine::Removed(old_lines[i].clone(), i + 1));
             i += 1;
         } else {
-            // Context line (simplified - in real git this would be more complex)
             if i < old_lines.len() {
                 diff.push(DiffLine::Unchanged(old_lines[i].clone(), i + 1));
                 i += 1;

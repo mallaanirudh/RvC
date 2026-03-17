@@ -1,9 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use minigit::cli::Cli;
-use minigit::commands;
-
-fn main() -> Result<()> {
+use rvc::cli::Cli;
+use rvc::commands;
+use rvc:Node;
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
 
@@ -14,6 +15,7 @@ fn main() -> Result<()> {
         commands::Commands::Log => commands::log::execute(&cwd)?,
         commands::Commands::Status => commands::status::execute(&cwd)?, 
         commands::Commands::Diff => commands::diff::execute(&cwd)?, 
+        commands::Node => { network::node::run_node().await.unwrap();},
     }
 
     Ok(())

@@ -20,4 +20,5 @@ pub enum Commands {
     Log,
     Status,
     Diff,
+    Node
 }

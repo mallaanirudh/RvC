@@ -4,7 +4,6 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 
-// Remove: pub struct LogCommand;
 
 pub fn execute(repo: &Path) -> Result<()> {
     let store = FsObjectStore::new(repo);

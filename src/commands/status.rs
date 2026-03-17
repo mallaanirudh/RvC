@@ -22,19 +22,14 @@ pub struct Status {
 fn get_status(repo: &Path, store: &FsObjectStore) -> Result<Status> {
     let mut status = Status::default();
     let index = Index::load(repo)?;
-    
-    // Get the last commit tree to compare against
     let head_oid = get_head_commit_oid(repo)?;
     let last_commit_tree = if let Some(oid) = head_oid {
         get_commit_tree(&oid, store)?
     } else {
-        HashMap::new() // No commits yet
+        HashMap::new() 
     };
-
-    // Track all files in working directory
     let working_files = find_working_directory_files(repo)?;
     
-    // Check staged changes (files in index)
     for indexed_file in index.entries.keys() {
         if let Some(commit_oid) = last_commit_tree.get(indexed_file) {
             let index_oid = &index.entries[indexed_file].oid;
@@ -46,10 +41,10 @@ fn get_status(repo: &Path, store: &FsObjectStore) -> Result<Status> {
         }
     }
 
-    // Check unstaged changes and untracked files
+    
     for file_path in working_files {
         if index.entries.contains_key(&file_path) {
-            // File is tracked - check if modified
+     
             let current_oid = compute_file_oid(repo, &file_path)?;
             let indexed_oid = &index.entries[&file_path].oid;
             
@@ -57,7 +52,7 @@ fn get_status(repo: &Path, store: &FsObjectStore) -> Result<Status> {
                 status.unstaged_changes.push(format!("modified: {}", file_path));
             }
         } else {
-            // File is untracked
+         
             status.untracked_files.push(file_path);
         }
     }
@@ -100,13 +95,12 @@ fn find_working_directory_files(repo: &Path) -> Result<Vec<String>> {
     
     for entry in walkdir::WalkDir::new(repo)
         .min_depth(1)
-        .max_depth(10) // Reasonable depth
+        .max_depth(10) 
         .into_iter()
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        
-        // Skip .minigit directory and other ignores
+
         if path.starts_with(repo.join(".minigit")) {
             continue;
         }

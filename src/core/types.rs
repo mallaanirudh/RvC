@@ -62,8 +62,6 @@ pub struct Commit {
     pub message: String,
     pub timestamp: i64,
 }
-
-// Repository layout helpers
 pub fn repo_dir<P: AsRef<std::path::Path>>(p: P) -> std::path::PathBuf {
     p.as_ref().join(".minigit")
 }
