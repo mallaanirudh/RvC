@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use rvc::cli::Cli;
 use rvc::commands;
-use rvc:Node;
+use rvc::network;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -15,8 +15,7 @@ async fn main() -> Result<()> {
         commands::Commands::Log => commands::log::execute(&cwd)?,
         commands::Commands::Status => commands::status::execute(&cwd)?, 
         commands::Commands::Diff => commands::diff::execute(&cwd)?, 
-        commands::Node => { network::node::run_node().await.unwrap();},
+        commands::Commands::Node => { network::node::run_node().await.unwrap();},
     }
-
     Ok(())
 }

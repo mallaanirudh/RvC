@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "rvc")]
-#[command(about = "Minimal Git-like VCS for DSA demonstration", long_about = None)]
+#[command(about = "A p2p dectralized version control", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -20,5 +20,5 @@ pub enum Commands {
     Log,
     Status,
     Diff,
-    Node
+    Node,
 }
