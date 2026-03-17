@@ -29,25 +29,26 @@ minigit init
 echo "Hello World" > story.txt
 
 # Check status (shows untracked files)
-minigit status
+rvc status
 
 # Stage files
-minigit add story.txt
+rvc add story.txt
 
 # Verify staged files
-minigit status
+rvc status
 
 # Commit
-minigit commit -m "Add initial story"
+rvc commit -m "Add initial story"
 
 # Modify file
 echo "New chapter" >> story.txt
 
 # View file changes
-minigit diff
+rvc diff
 
 # Display commit history
-minigit log
+rvc log
+
 ⚙️ Installation
 # Clone repository
 git clone https://github.com/mallaanirudh/RvC.git
