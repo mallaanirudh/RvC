@@ -1,4 +1,4 @@
-# 🦀 RvC (Rust Version Control)
+# 🦀 RvC (Remote Version Control)
 
 A  reimplementation of **Git**, written entirely in **Rust**.  
 RvC showcases how version control systems manage commits, diffs, and file tracking under the hood — in a compact, understandable codebase.
