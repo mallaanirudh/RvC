@@ -11,6 +11,8 @@ use libp2p::{
 };
 use libp2p::mdns::Event as MdnsEvent;
 use std::collections::HashSet;
+use crate::network::protocol::{RvcRequest, RvcResponse};
+use libp2p::request_response::{Event as RequestResponseEvent, Message as RequestResponseMessage};
 
 pub async fn run_node(port: Option<u16>) -> Result<(), Box<dyn std::error::Error>> {
     let port = port.unwrap_or(4001);
@@ -27,12 +29,8 @@ pub async fn run_node(port: Option<u16>) -> Result<(), Box<dyn std::error::Error
         identity.peer_id,
         libp2p::swarm::Config::with_tokio_executor(),
     );
-
-    // let OS assign port → avoids conflicts
     let addr: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
     swarm.listen_on(addr)?;
-
-    // track active connections (NOT attempts)
     let mut connected_peers = HashSet::new();
 
     loop {
@@ -41,8 +39,6 @@ pub async fn run_node(port: Option<u16>) -> Result<(), Box<dyn std::error::Error
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("Listening on {address}");
             }
-
-            // ✅ mark only AFTER success
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("Connected to {peer_id}");
                 connected_peers.insert(peer_id);
@@ -59,33 +55,27 @@ pub async fn run_node(port: Option<u16>) -> Result<(), Box<dyn std::error::Error
                     RvcEvent::Mdns(mdns_event) => match mdns_event {
 
                         MdnsEvent::Discovered(list) => {
+                            
                             for (peer, addr) in list {
-
-                                // ❌ skip self
                                 if peer == identity.peer_id {
                                     continue;
                                 }
-
-                                // ❌ skip already connected
                                 if connected_peers.contains(&peer) {
                                     continue;
                                 }
-
-                                // ❌ avoid duplicate loopback + LAN conflicts
-                                if addr.to_string().contains("127.0.0.1") {
-                                    continue;
-                                }
-
                                 println!("Discovered {peer} at {addr}");
-
-                                // ✅ correct dial method
                                 let opts = DialOpts::peer_id(peer)
                                     .addresses(vec![addr.clone()])
                                     .build();
-
                                 if let Err(e) = swarm.dial(opts) {
-                                    println!("Dial error: {:?}", e);
-                                }
+        println!("Dial failed for {peer}: {e}");
+        continue;
+    }
+                                swarm
+                                .behaviour_mut()
+                                .req_res
+                                .send_request(&peer, RvcRequest::GetHead);
+                               
                             }
                         }
 
@@ -95,10 +85,42 @@ pub async fn run_node(port: Option<u16>) -> Result<(), Box<dyn std::error::Error
                     RvcEvent::Ping(ping_event) => {
                         println!("Ping: {:?}", ping_event);
                     }
+                    RvcEvent::ReqRes(event) => {
+    match event {
+
+        RequestResponseEvent::Message { peer, message } => {
+            match message {
+                RequestResponseMessage::Request { request, channel, .. } => {
+                    match request {
+                        RvcRequest::GetHead => {
+                            println!("Peer {peer} requested HEAD");
+
+                            let response = RvcResponse::Head("dummy_hash".into());
+
+                            swarm.behaviour_mut()
+                                .req_res
+                                .send_response(channel, response)
+                                .unwrap();
+                        }
+                    }
                 }
+
+            
+                RequestResponseMessage::Response { response, .. } => {
+                    println!("Received from {peer}: {:?}", response);
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+                }
+                
             }
 
             _ => {}
         }
+        
     }
 }
