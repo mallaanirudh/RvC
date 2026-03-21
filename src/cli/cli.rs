@@ -20,5 +20,7 @@ pub enum Commands {
     Log,
     Status,
     Diff,
-    Node,
+    Node{
+        port: Option<u16>,
+    },
 }

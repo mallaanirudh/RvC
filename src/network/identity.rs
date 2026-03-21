@@ -8,13 +8,13 @@ pub struct NodeIdentity {
     pub peer_id: PeerId,
 }
 
-fn identity_path() -> PathBuf {
-    let home = dirs::home_dir().expect("could not determine home directory");
-    home.join(".rvc").join("peer_key")
-}
+// fn identity_path() -> PathBuf {
+//     let home = dirs::home_dir().expect("could not determine home directory");
+//     home.join(".rvc").join("peer_key")
+// }
 
-pub fn load_or_generate_identity() -> NodeIdentity {
-    let path = identity_path();
+pub fn load_or_generate_identity(port:u16) -> NodeIdentity {
+  let path = PathBuf::from(format!("./.rvc/peer_key_{}", port));
 
     let keypair = if path.exists() {
         let bytes = fs::read(&path).expect("failed to read peer key");

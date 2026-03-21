@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
         commands::Commands::Log => commands::log::execute(&cwd)?,
         commands::Commands::Status => commands::status::execute(&cwd)?, 
         commands::Commands::Diff => commands::diff::execute(&cwd)?, 
-        commands::Commands::Node => { network::node::run_node().await.unwrap();},
+        commands::Commands::Node {port  } => { network::node::run_node(port).await.unwrap();},
     }
     Ok(())
 }
