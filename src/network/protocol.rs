@@ -14,14 +14,18 @@ impl AsRef<str> for RvcProtocol {
     }
 }
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RvcRequest {
-    GetHead,
+pub enum SyncRequest {
+    GetRefs,
+    GetObjects(Vec<String>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RvcResponse {
-    Head(String),
+pub enum SyncResponse {
+    Refs(HashMap<String, String>),
+    Objects(Vec<(String, Vec<u8>)>),
 }
 
 #[derive(Clone, Default)]
@@ -30,8 +34,8 @@ pub struct RvcCodec;
 #[async_trait]
 impl Codec for RvcCodec {
     type Protocol = RvcProtocol;
-    type Request = RvcRequest;
-    type Response = RvcResponse;
+    type Request = SyncRequest;
+    type Response = SyncResponse;
 
     async fn read_request<T>(
         &mut self,

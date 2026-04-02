@@ -1,4 +1,5 @@
 use libp2p::{
+    kad::{self, Record, store::MemoryStore},
     mdns,
     ping,
     request_response,
@@ -21,6 +22,7 @@ pub struct RvcBehaviour {
     pub mdns: mdns::tokio::Behaviour,
     pub ping: ping::Behaviour,
     pub req_res: RequestResponseBehaviour<RvcCodec>,
+    pub kad: kad::Behaviour<MemoryStore>,
 }
 
 impl RvcBehaviour {
@@ -36,19 +38,27 @@ impl RvcBehaviour {
        iter::once((RvcProtocol, ProtocolSupport::Full)), 
       request_response::Config::default(),
     );
+        
+        let store = MemoryStore::new(peer_id);
+        let kad = kad::Behaviour::new(peer_id, store);
 
-        Ok(Self { mdns, ping, req_res })
+        Ok(Self { mdns, ping, req_res, kad })
     }
+}
+
+pub fn repo_key(name: &str) -> libp2p::kad::RecordKey {
+    libp2p::kad::RecordKey::new(&name.as_bytes())
 }
 
 pub enum RvcEvent {
     Mdns(mdns::Event),
     Ping(ping::Event),
-    ReqRes(RequestResponseEvent<RvcRequest, RvcResponse>),
+    ReqRes(RequestResponseEvent<SyncRequest, SyncResponse>),
+    Kad(kad::Event),
 }
 
-impl From<request_response::Event<RvcRequest, RvcResponse>> for RvcEvent {
-    fn from(event: request_response::Event<RvcRequest, RvcResponse>) -> Self {
+impl From<request_response::Event<SyncRequest, SyncResponse>> for RvcEvent {
+    fn from(event: request_response::Event<SyncRequest, SyncResponse>) -> Self {
         RvcEvent::ReqRes(event)
     }
 }
@@ -62,5 +72,11 @@ impl From<mdns::Event> for RvcEvent {
 impl From<ping::Event> for RvcEvent {
     fn from(event: ping::Event) -> Self {
         RvcEvent::Ping(event)
+    }
+}
+
+impl From<kad::Event> for RvcEvent {
+    fn from(event: kad::Event) -> Self {
+        RvcEvent::Kad(event)
     }
 }

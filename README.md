@@ -66,177 +66,135 @@ cargo run -- [command]
 
 ## Overview
 
-Minimal architecture for a P2P system with controlled writes.
+Layers
+1. Network Layer (libp2p)
 
-* P2P network (no central relay)
-* Single logical writer (authority)
-* Deterministic state replication
-
----
-
-## Layers
-
-### 1. Network Layer (libp2p)
-
-**Purpose:** transport only
+Purpose: transport only
 
 Components:
 
-* mDNS → peer discovery (LAN only)
-* Connections → TCP/QUIC
-* PubSub → broadcast messages
-* Request–Response → direct sync
+mDNS → peer discovery (LAN; replaceable with DHT later)
+Connections → TCP/QUIC
+PubSub → lightweight announcements
+Request–Response → object transfer
 
 Rules:
 
-* no state logic
-* no validation
-* no mutation
+no state logic
+no validation
+no mutation
+2. Repo Layer (Object Store + DAG)
 
----
+Purpose: local state + history
 
-### 2. Repo Layer (State Store)
+Core Objects
+type Hash = [u8; 32];
 
-**Purpose:** local state + versioning
-
-```rust
-struct Repo<T> {
-    data: T,
-    version: u64
+struct Blob {
+    data: Vec<u8>
 }
-```
+
+struct Tree {
+    entries: Vec<(String, Hash)>
+}
+
+struct Commit {
+    tree: Hash,
+    parents: Vec<Hash>,
+    author: String,
+    message: String,
+    timestamp: u64
+}
+Storage
+trait ObjectStore {
+    fn get(&self, hash: &Hash) -> Option<Vec<u8>>;
+    fn put(&mut self, data: Vec<u8>) -> Hash;
+    fn has(&self, hash: &Hash) -> bool;
+}
 
 Rules:
 
-* version increments strictly by 1
-* accepts only `version == current + 1`
-* rejects stale / duplicate / out-of-order updates
-* no networking
-
-API:
-
-```rust
-fn get() -> (T, u64)
-fn apply(data: T, version: u64) -> bool
-```
-
----
-
-### 3. Sync Layer (Protocol)
-
-**Purpose:** move state across nodes
-
-#### PubSub (live updates)
-
-Topic:
-
-```
-updates
-```
-
-Message:
-
-```rust
-struct UpdateMsg<T> {
-    version: u64,
-    data: T
+objects are immutable
+hash = content identity
+no global version counter
+References (Branches)
+struct Refs {
+    heads: HashMap<String, Hash>
 }
-```
 
----
+Rules:
 
-#### Request–Response (recovery)
+branch = pointer to commit
+multiple branches allowed
+updates must be fast-forward or merged
+Repo API
+fn commit(tree: Hash, parents: Vec<Hash>, msg: String) -> Hash;
+
+fn get_commit(hash: Hash) -> Commit;
+
+fn update_ref(name: &str, new_head: Hash);
+
+fn get_ref(name: &str) -> Option<Hash>;
+Key Property
+History forms a DAG, not a linear chain
+Concurrent commits are valid and expected
+3. Sync Layer (Protocol)
+
+Purpose: exchange objects and refs across nodes
+
+Request–Response Protocol
 
 Protocol:
 
-```
-/sync/1.0.0
-```
-
-```rust
-struct SyncRequest {
-    from_version: u64
+/sync/2.0.0
+Messages
+enum SyncRequest {
+    GetRefs,
+    GetObjects(Vec<Hash>)
 }
 
-struct SyncResponse<T> {
-    updates: Vec<UpdateMsg<T>>
+enum SyncResponse {
+    Refs(HashMap<String, Hash>),
+    Objects(Vec<(Hash, Vec<u8>)>)
 }
-```
+PubSub (optional)
 
----
+Topic:
 
-### Sync Logic
+refs-update
 
-```rust
-if msg.version == repo.version + 1:
-    apply
-else if msg.version > repo.version + 1:
-    request_sync()
+Message:
+
+struct RefUpdate {
+    branch: String,
+    head: Hash
+}
+
+Purpose:
+
+notify peers of new commits
+trigger pull-based sync
+Sync Logic
+On Peer Connection
+1. exchange refs
+2. compare branch heads
+3. find missing commits via DAG traversal
+4. request missing objects
+5. store objects locally
+6. update refs (fast-forward or merge)
+Missing Object Discovery
+if !local.has(hash):
+    request object
+    traverse parents
+Update Rules
+if new_head is descendant of local_head:
+    fast-forward
 else:
-    ignore
-```
+    create merge commit
+Data Flow
+Node A:
+    commit → store objects → update ref → announce
 
----
-
-## Authority Layer
-
-**Purpose:** enforce single writer
-
-Rules:
-
-* exactly one node publishes updates
-* all other nodes are read-only
-
-### Authority Node
-
-* updates repo
-* increments version
-* publishes UpdateMsg
-
-### Follower Nodes
-
-* subscribe to updates
-* apply valid updates
-* request missing data
-
----
-
-## Data Flow
-
-```
-Authority:
-    write → repo → version++ → publish
-
-Follower:
-    receive → validate → apply
-           OR
-           detect gap → sync request
-```
-
----
-
-## Constraints
-
-* no multiple writers
-* no DHT for syncing
-* no full-state broadcast loops
-* no high-frequency data syncing
-
----
-
-## Known Limitations
-
-* authority is a single point of failure
-* no automatic failover
-* mDNS limits network scope
-
----
-
-## Summary
-
-* Network = communication
-* Sync = protocol
-* Repo = state
-* Authority = write control
-
-Separation is mandatory. Mixing these will break consistency.
+Node B:
+    receive ref update → compare → fetch missing objects
+           → validate → store → update ref

@@ -20,7 +20,22 @@ pub enum Commands {
     Log,
     Status,
     Diff,
-    Node{
+    Node {
         port: Option<u16>,
+    },
+    Start {
+        #[arg(long)]
+        bootstrap: Option<String>,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    Announce {
+        repo: String,
+    },
+    Peers {
+        repo: String,
+    },
+    Sync {
+        repo: String,
     },
 }

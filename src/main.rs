@@ -15,7 +15,11 @@ async fn main() -> Result<()> {
         commands::Commands::Log => commands::log::execute(&cwd)?,
         commands::Commands::Status => commands::status::execute(&cwd)?, 
         commands::Commands::Diff => commands::diff::execute(&cwd)?, 
-        commands::Commands::Node {port  } => { network::node::run_node(port).await.unwrap();},
+        commands::Commands::Node {port  } => { network::node::run_node(port, None).await.unwrap();},
+        commands::Commands::Start { bootstrap, port } => { network::node::run_node(port, bootstrap).await.unwrap();},
+        commands::Commands::Announce { repo } => { network::node::announce_cmd(&cwd, &repo).await.unwrap();},
+        commands::Commands::Peers { repo } => { network::node::peers_cmd(&cwd, &repo).await.unwrap();},
+        commands::Commands::Sync { repo } => { network::node::sync_cmd(&cwd, &repo).await.unwrap();},
     }
     Ok(())
 }

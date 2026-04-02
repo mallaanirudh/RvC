@@ -6,3 +6,5 @@ pub use cli::*;
 pub use commands::*;
 pub use core::*;
 pub mod network;
+pub mod repo;
+pub mod sync;
