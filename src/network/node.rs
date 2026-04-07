@@ -41,28 +41,54 @@ pub async fn run_node(port: Option<u16>, bootstrap: Option<String>) -> Result<()
         swarm.dial(addr.clone())?;
     }
 
+    let mut heartbeat = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
     loop {
-        match swarm.select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                println!("Listening on {address}");
+        tokio::select! {
+            _ = heartbeat.tick() => {
+                // Drive the swarm to flush background tasks/responses even when idle
+                let _ = futures::future::poll_fn(|cx| {
+                    let _ = swarm.poll_next_unpin(cx);
+                    std::task::Poll::Pending::<()>
+                });
             }
-            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                swarm.behaviour_mut().kad.add_address(&peer_id, endpoint.get_remote_address().clone());
-                let _ = swarm.behaviour_mut().kad.bootstrap();
-            }
-            SwarmEvent::Behaviour(event) => {
+            event = swarm.select_next_some() => {
                 match event {
-                    RvcEvent::Mdns(MdnsEvent::Discovered(list)) => {
-                        for (peer, addr) in list {
-                            swarm.behaviour_mut().kad.add_address(&peer, addr.clone());
-                        }
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        println!("Listening on {address}");
                     }
-                    RvcEvent::ReqRes(RequestResponseEvent::Message { peer, message }) => {
-                        match message {
-                            RequestResponseMessage::Request { request, channel, .. } => {
-                                let repo = std::env::current_dir().unwrap();
-                                let response = crate::sync::handle_request(&repo, request);
-                                let _ = swarm.behaviour_mut().req_res.send_response(channel, response);
+                    SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                        swarm.behaviour_mut().kad.add_address(&peer_id, endpoint.get_remote_address().clone());
+                        let _ = swarm.behaviour_mut().kad.bootstrap();
+                    }
+                    SwarmEvent::Behaviour(event) => {
+                        match event {
+                            RvcEvent::Mdns(MdnsEvent::Discovered(list)) => {
+                                for (peer, addr) in list {
+                                    swarm.behaviour_mut().kad.add_address(&peer, addr.clone());
+                                }
+                            }
+                            RvcEvent::ReqRes(RequestResponseEvent::Message { peer: _peer, message }) => {
+                                match message {
+                                    RequestResponseMessage::Request { request, channel, .. } => {
+                                        if let Ok(repo) = std::env::current_dir() {
+                                            println!("--- INCOMING REQUEST ---");
+                                            println!("Repo Path: {:?}", repo.canonicalize().unwrap_or(repo.clone()));
+                                            let response = crate::sync::handle_request(&repo, request);
+                                            match swarm.behaviour_mut().req_res.send_response(channel, response) {
+                                                Ok(_) => println!("Response successfully queued."),
+                                                Err(_) => println!("Error: Response channel closed."),
+                                            }
+                                        }
+                                    }
+                                    RequestResponseMessage::Response { .. } => {}
+                                }
+                            }
+                            RvcEvent::ReqRes(RequestResponseEvent::InboundFailure { error, .. }) => {
+                                println!("Inbound request failed: {:?}", error);
+                            }
+                            RvcEvent::ReqRes(RequestResponseEvent::OutboundFailure { error, .. }) => {
+                                println!("Outbound request failed: {:?}", error);
                             }
                             _ => {}
                         }
@@ -70,7 +96,6 @@ pub async fn run_node(port: Option<u16>, bootstrap: Option<String>) -> Result<()
                     _ => {}
                 }
             }
-            _ => {}
         }
     }
 }
@@ -142,95 +167,74 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
     let key = repo_key(repo);
     swarm.behaviour_mut().kad.get_record(key);
 
-    let mut found_peer = None;
+    let mut target_peer = None;
+
+    // Dial already known peers from meta
+    for peer_str in &meta.peers {
+        if let Ok(peer) = peer_str.parse() {
+            println!("Dialing known peer from meta: {}", peer);
+            let _ = swarm.dial(peer);
+            target_peer = Some(peer);
+        }
+    }
+
+    println!("Searching for peers and waiting for connection...");
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(30));
+    tokio::pin!(timeout);
 
     loop {
-        match swarm.select_next_some().await {
-            SwarmEvent::Behaviour(RvcEvent::Kad(KadEvent::OutboundQueryProgressed { result: QueryResult::GetRecord(res), .. })) => {
-                match res {
-                    Ok(GetRecordOk::FoundRecord(PeerRecord { record: Record { value, .. }, .. })) => {
-                        if let Ok(peer) = PeerId::from_bytes(&value) {
-                            found_peer = Some(peer);
-                            println!("Discovered peer via DHT: {}", peer);
-                            crate::repo::meta::add_peer(cwd, peer);
+        tokio::select! {
+            _ = &mut timeout => {
+                return Err(anyhow::anyhow!("Sync timed out: No peers found for repo {}", repo).into());
+            }
+            event = swarm.select_next_some() => {
+                match event {
+                    SwarmEvent::Behaviour(RvcEvent::Mdns(MdnsEvent::Discovered(list))) => {
+                        for (peer, addr) in list {
+                            println!("mDNS Discovered peer: {}", peer);
+                            swarm.behaviour_mut().kad.add_address(&peer, addr);
+                            target_peer = Some(peer);
+                            
+                            if swarm.is_connected(&peer) {
+                                println!("Peer {} already connected. Starting sync...", peer);
+                                return crate::sync::manager::sync_with_peer(peer, cwd, &mut swarm).await;
+                            } else {
+                                println!("Dialing discovered peer: {}", peer);
+                                let _ = swarm.dial(peer);
+                            }
                         }
-                        break;
+                    }
+                    SwarmEvent::Behaviour(RvcEvent::Kad(KadEvent::OutboundQueryProgressed { result: QueryResult::GetRecord(res), .. })) => {
+                        if let Ok(GetRecordOk::FoundRecord(PeerRecord { record: Record { value, .. }, .. })) = res {
+                            if let Ok(peer_id) = PeerId::from_bytes(&value) {
+                                println!("DHT Discovered peer: {}", peer_id);
+                                target_peer = Some(peer_id);
+                                
+                                if swarm.is_connected(&peer_id) {
+                                    println!("Peer {} already connected (DHT). Starting sync...", peer_id);
+                                    return crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await;
+                                } else {
+                                    println!("Dialing peer from DHT: {}", peer_id);
+                                    let _ = swarm.dial(peer_id);
+                                }
+                            }
+                        }
+                    }
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        if Some(peer_id) == target_peer {
+                            println!("Connection established to {}. Starting sync...", peer_id);
+                            return crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await;
+                        }
+                    }
+                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), error, .. } => {
+                        if Some(peer_id) == target_peer {
+                            println!("Failed to connect to {}: {:?}", peer_id, error);
+                            // Keep trying discovery
+                        }
                     }
                     _ => {}
                 }
             }
-            SwarmEvent::Behaviour(RvcEvent::Mdns(MdnsEvent::Discovered(list))) => {
-                for (peer, addr) in list {
-                    swarm.behaviour_mut().kad.add_address(&peer, addr);
-                    println!("mDNS Discovered peer: {}", peer);
-                    found_peer = Some(peer);
-                    break;
-                }
-                if found_peer.is_some() { break; }
-            }
-            _ => {}
         }
     }
-    
-    // If still none, wait up to 3 seconds for mDNS discovery
-    if found_peer.is_none() {
-        println!("DHT lookup empty. Waiting a moment for local mDNS discovery...");
-        let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(3));
-        tokio::pin!(timeout);
-        
-        loop {
-            tokio::select! {
-                _ = &mut timeout => {
-                    break;
-                }
-                event = swarm.select_next_some() => {
-                    if let SwarmEvent::Behaviour(RvcEvent::Mdns(MdnsEvent::Discovered(list))) = event {
-                        for (peer, addr) in list {
-                            swarm.behaviour_mut().kad.add_address(&peer, addr);
-                            println!("mDNS Discovered peer: {}", peer);
-                            found_peer = Some(peer);
-                            break;
-                        }
-                        if found_peer.is_some() { break; }
-                    }
-                }
-            }
-        }
-    }
-
-    if found_peer.is_none() {
-        if let Some(peer_str) = meta.peers.first() {
-            if let Ok(peer) = peer_str.parse() {
-                println!("DHT lookup failed, falling back to stored peer: {}", peer);
-                found_peer = Some(peer);
-            }
-        }
-    }
-
-    if let Some(peer) = found_peer {
-        // Dial them
-        let _ = swarm.dial(peer);
-        
-        // Wait for connection
-        loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    if peer_id == peer {
-                        println!("Connected, starting sync...");
-                        crate::sync::manager::sync_with_peer(peer, cwd, &mut swarm).await?;
-                        break;
-                    }
-                }
-                SwarmEvent::OutgoingConnectionError { peer_id: Some(pid), error, .. } if pid == peer => {
-                    println!("Failed to connect to {}: {:?}", pid, error);
-                    break;
-                }
-                _ => {}
-            }
-        }
-    } else {
-        println!("No peers found for repo {}", repo);
-    }
-
-    Ok(())
 }

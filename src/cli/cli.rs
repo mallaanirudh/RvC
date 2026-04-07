@@ -38,4 +38,7 @@ pub enum Commands {
     Sync {
         repo: String,
     },
+    Checkout {
+        hash: String,
+    },
 }

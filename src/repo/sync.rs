@@ -22,49 +22,63 @@ pub fn find_missing_objects(
             Err(_) => continue,
         };
 
-        if let Ok(Some(obj)) = store.get(&oid) {
-            // Traverse parents
-            match obj {
-                Object::Commit(c) => {
-                    for p in c.parents {
-                        queue.push(p);
+        match store.get(&oid) {
+            Ok(Some(obj)) => {
+                // Object exists locally, traverse its children/parents to find further potential missing objects
+                match obj {
+                    Object::Commit(c) => {
+                        for p in c.parents {
+                            queue.push(p);
+                        }
+                        queue.push(c.tree);
                     }
-                    queue.push(c.tree);
-                }
-                Object::Tree(entries) => {
-                    for e in entries {
-                        queue.push(e.oid.to_hex());
+                    Object::Tree(entries) => {
+                        for e in entries {
+                            queue.push(e.oid.to_hex());
+                        }
                     }
+                    Object::Blob(_) => {}
                 }
-                Object::Blob(_) => {}
             }
-        } else {
-            // Object is missing! Collect it.
-            missing.push(hash_str);
+            _ => {
+                // Object is missing locally! Add it to the list to be fetched.
+                missing.push(hash_str.clone());
+            }
         }
     }
     missing
 }
 
 pub fn get_objects(repo: &Path, hashes: Vec<String>) -> Vec<(String, Vec<u8>)> {
+    println!("Serving {} requested objects", hashes.len());
     let mut res = Vec::new();
     for hash_str in hashes {
         let path = crate::core::types::objects_dir(repo).join(&hash_str);
-        if let Ok(data) = std::fs::read(path) {
-            res.push((hash_str, data));
+        match std::fs::read(&path) {
+            Ok(data) => {
+                res.push((hash_str, data));
+            }
+            Err(e) => {
+                println!("Warning: Failed to read object {}: {:?}", hash_str, e);
+            }
         }
     }
     res
 }
 
 pub fn store_objects(repo: &Path, objects: Vec<(String, Vec<u8>)>) {
+    println!("Storing {} objects...", objects.len());
     for (hash_str, data) in objects {
         let path = crate::core::types::objects_dir(repo).join(&hash_str);
         if !path.exists() {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let _ = std::fs::write(path, data);
+            if let Err(e) = std::fs::write(&path, data) {
+                println!("Error storing object {}: {:?}", hash_str, e);
+            } else {
+                println!("Stored object {}", hash_str);
+            }
         }
     }
 }

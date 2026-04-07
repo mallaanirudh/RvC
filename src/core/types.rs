@@ -63,7 +63,7 @@ pub struct Commit {
     pub timestamp: i64,
 }
 pub fn repo_dir<P: AsRef<std::path::Path>>(p: P) -> std::path::PathBuf {
-    p.as_ref().join(".minigit")
+    p.as_ref().join(".rvc")
 }
 
 pub fn objects_dir<P: AsRef<std::path::Path>>(p: P) -> std::path::PathBuf {

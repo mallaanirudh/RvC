@@ -14,8 +14,15 @@ impl AsRef<str> for RvcProtocol {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RvcCodec;
+
+impl Default for RvcCodec {
+    fn default() -> Self {
+        eprintln!("[Codec] INITIALIZED (JSON/EOF Mode)");
+        Self
+    }
+}
 
 #[async_trait]
 impl Codec for RvcCodec {
@@ -31,19 +38,14 @@ impl Codec for RvcCodec {
     where
         T: AsyncRead + Unpin + Send,
     {
-        let mut len_buf = [0u8; 4];
-        io.read_exact(&mut len_buf).await?;
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        if len > 1_000_000 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "request too large"));
-        }
-
-        let mut buf = vec![0; len];
-        io.read_exact(&mut buf).await?;
-
-        bincode::deserialize(&buf)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "decode request"))
+        let mut buf = Vec::new();
+        io.read_to_end(&mut buf).await?;
+        eprintln!("[Codec] Read request ({} bytes)", buf.len());
+        
+        serde_json::from_slice(&buf).map_err(|e| {
+            eprintln!("[Codec] JSON Decode Error (Request): {:?}", e);
+            io::Error::new(io::ErrorKind::InvalidData, e)
+        })
     }
 
     async fn read_response<T>(
@@ -54,19 +56,14 @@ impl Codec for RvcCodec {
     where
         T: AsyncRead + Unpin + Send,
     {
-        let mut len_buf = [0u8; 4];
-        io.read_exact(&mut len_buf).await?;
-        let len = u32::from_be_bytes(len_buf) as usize;
+        let mut buf = Vec::new();
+        io.read_to_end(&mut buf).await?;
+        eprintln!("[Codec] Read response ({} bytes)", buf.len());
 
-        if len > 1_000_000 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "response too large"));
-        }
-
-        let mut buf = vec![0; len];
-        io.read_exact(&mut buf).await?;
-
-        bincode::deserialize(&buf)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "decode response"))
+        serde_json::from_slice(&buf).map_err(|e| {
+            eprintln!("[Codec] JSON Decode Error (Response): {:?}", e);
+            io::Error::new(io::ErrorKind::InvalidData, e)
+        })
     }
 
     async fn write_request<T>(
@@ -78,13 +75,11 @@ impl Codec for RvcCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        let data = bincode::serialize(&req)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode request"))?;
-
-        let len = (data.len() as u32).to_be_bytes();
-        io.write_all(&len).await?;
-        io.write_all(&data).await?;
-        io.close().await
+        let buf = serde_json::to_vec(&req).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        eprintln!("[Codec] Writing request ({} bytes)", buf.len());
+        io.write_all(&buf).await?;
+        io.close().await?;
+        Ok(())
     }
 
     async fn write_response<T>(
@@ -96,12 +91,14 @@ impl Codec for RvcCodec {
     where
         T: AsyncWrite + Unpin + Send,
     {
-        let data = bincode::serialize(&res)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode response"))?;
-
-        let len = (data.len() as u32).to_be_bytes();
-        io.write_all(&len).await?;
-        io.write_all(&data).await?;
-        io.close().await
+        let buf = serde_json::to_vec(&res).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        eprintln!("[Codec] Writing response ({} bytes)", buf.len());
+        io.write_all(&buf).await?;
+        io.flush().await?;
+        // Small grace period for Windows TCP to flush before half-close
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        io.close().await?;
+        eprintln!("[Codec] Response stream closed.");
+        Ok(())
     }
 }

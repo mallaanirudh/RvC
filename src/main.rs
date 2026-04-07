@@ -5,6 +5,7 @@ use rvc::commands;
 use rvc::network;
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("RVC_VERSION: SYNC_STABLE_V3");
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
 
@@ -19,7 +20,13 @@ async fn main() -> Result<()> {
         commands::Commands::Start { bootstrap, port } => { network::node::run_node(port, bootstrap).await.unwrap();},
         commands::Commands::Announce { repo } => { network::node::announce_cmd(&cwd, &repo).await.unwrap();},
         commands::Commands::Peers { repo } => { network::node::peers_cmd(&cwd, &repo).await.unwrap();},
-        commands::Commands::Sync { repo } => { network::node::sync_cmd(&cwd, &repo).await.unwrap();},
+        commands::Commands::Sync { repo } => { 
+            if let Err(e) = network::node::sync_cmd(&cwd, &repo).await {
+                eprintln!("Sync error: {}", e);
+                std::process::exit(1);
+            }
+        },
+        commands::Commands::Checkout { hash } => commands::checkout::execute(&cwd, &hash)?,
     }
     Ok(())
 }
