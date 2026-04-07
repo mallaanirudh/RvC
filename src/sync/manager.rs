@@ -53,8 +53,8 @@ pub fn sync_with_peer<'a>(
                         } else {
                             println!("Divergent branch detected on {}. Creating merge commit...", ref_name);
                             if let Some(merge_hash) = create_merge_commit(cwd, local_hash, remote_hash) {
-                                println!("Created merge commit {} for {}", merge_hash, ref_name);
-                                final_refs.insert(ref_name.clone(), merge_hash);
+                                    println!("Created merge commit {} for {}", merge_hash, ref_name);
+                                    final_refs.insert(ref_name.clone(), merge_hash);
                             } else {
                                 println!("Failed to create merge commit for {}", ref_name);
                             }

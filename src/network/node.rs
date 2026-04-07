@@ -156,14 +156,44 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
                         }
                         break;
                     }
-                    Err(_) => {
-                        break;
-                    }
                     _ => {}
                 }
             }
-            _ => {
-                // If we get connection established to an mdns peer, we could also use it
+            SwarmEvent::Behaviour(RvcEvent::Mdns(MdnsEvent::Discovered(list))) => {
+                for (peer, addr) in list {
+                    swarm.behaviour_mut().kad.add_address(&peer, addr);
+                    println!("mDNS Discovered peer: {}", peer);
+                    found_peer = Some(peer);
+                    break;
+                }
+                if found_peer.is_some() { break; }
+            }
+            _ => {}
+        }
+    }
+    
+    // If still none, wait up to 3 seconds for mDNS discovery
+    if found_peer.is_none() {
+        println!("DHT lookup empty. Waiting a moment for local mDNS discovery...");
+        let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(3));
+        tokio::pin!(timeout);
+        
+        loop {
+            tokio::select! {
+                _ = &mut timeout => {
+                    break;
+                }
+                event = swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(RvcEvent::Mdns(MdnsEvent::Discovered(list))) = event {
+                        for (peer, addr) in list {
+                            swarm.behaviour_mut().kad.add_address(&peer, addr);
+                            println!("mDNS Discovered peer: {}", peer);
+                            found_peer = Some(peer);
+                            break;
+                        }
+                        if found_peer.is_some() { break; }
+                    }
+                }
             }
         }
     }
