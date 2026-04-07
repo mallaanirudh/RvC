@@ -1,7 +1,6 @@
 # 🦀 RvC: Remote Version Control
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)]()
 
 **RvC (Remote Version Control)** is a decentralized, peer-to-peer (P2P) version control system designed for serverless collaboration. Built entirely in Rust, it combines a Git-compatible content-addressable object model with a modern P2P networking stack using `libp2p`.
