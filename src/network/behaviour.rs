@@ -12,7 +12,8 @@ use libp2p::request_response::{
     ProtocolSupport,
 };
 
-use crate::network::protocol::*;
+use crate::sync::protocol::{RvcProtocol, RvcCodec};
+use crate::sync::messages::{SyncRequest, SyncResponse};
 use std::iter;
 
 #[derive(NetworkBehaviour)]

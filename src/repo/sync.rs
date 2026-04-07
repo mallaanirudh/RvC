@@ -99,3 +99,86 @@ pub fn update_refs(repo: &Path, refs: &HashMap<String, String>) {
         }
     }
 }
+
+pub fn is_descendant(repo: &Path, descendant_hash: &str, ancestor_hash: &str) -> bool {
+    if descendant_hash == ancestor_hash {
+        return true;
+    }
+    let store = FsObjectStore::new(repo);
+    let mut queue = vec![descendant_hash.to_string()];
+    let mut visited = HashSet::new();
+
+    while let Some(hash_str) = queue.pop() {
+        if hash_str == ancestor_hash {
+            return true;
+        }
+        if visited.contains(&hash_str) {
+            continue;
+        }
+        visited.insert(hash_str.clone());
+
+        if let Ok(oid) = Oid::from_hex(&hash_str) {
+            if let Ok(Some(Object::Commit(c))) = store.get(&oid) {
+                for p in c.parents {
+                    queue.push(p);
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn create_merge_commit(
+    repo: &Path,
+    local_hash: &str,
+    remote_hash: &str,
+) -> Option<String> {
+    let store = FsObjectStore::new(repo);
+    let local_oid = Oid::from_hex(local_hash).ok()?;
+    let remote_oid = Oid::from_hex(remote_hash).ok()?;
+
+    let local_commit = match store.get(&local_oid).ok()? {
+        Some(Object::Commit(c)) => c,
+        _ => return None,
+    };
+    let remote_commit = match store.get(&remote_oid).ok()? {
+        Some(Object::Commit(c)) => c,
+        _ => return None,
+    };
+
+    let mut merged_entries = std::collections::HashMap::new();
+    
+    if let Ok(remote_tree_oid) = Oid::from_hex(&remote_commit.tree) {
+        if let Ok(Some(Object::Tree(entries))) = store.get(&remote_tree_oid) {
+            for e in entries {
+                merged_entries.insert(e.name.clone(), e);
+            }
+        }
+    }
+    
+    if let Ok(local_tree_oid) = Oid::from_hex(&local_commit.tree) {
+        if let Ok(Some(Object::Tree(entries))) = store.get(&local_tree_oid) {
+            for e in entries {
+                merged_entries.insert(e.name.clone(), e);
+            }
+        }
+    }
+
+    let mut new_entries: Vec<crate::core::types::TreeEntry> = merged_entries.into_values().collect();
+    new_entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let tree_oid = store.put(&Object::Tree(new_entries)).ok()?;
+
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    
+    let merge_commit = crate::core::types::Commit {
+        tree: tree_oid.to_hex(),
+        parents: vec![local_hash.to_string(), remote_hash.to_string()],
+        author: "minigit-sync <sync@example.com>".to_string(),
+        message: format!("Merge remote {} into {}", remote_hash, local_hash),
+        timestamp: ts,
+    };
+
+    let commit_oid = store.put(&Object::Commit(merge_commit)).ok()?;
+    Some(commit_oid.to_hex())
+}

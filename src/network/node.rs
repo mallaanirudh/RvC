@@ -2,8 +2,8 @@ use crate::network::{
     identity::load_or_generate_identity,
     transport::build_transport,
     behaviour::{RvcBehaviour, RvcEvent, repo_key},
-    protocol::{SyncRequest, SyncResponse},
 };
+use crate::sync::messages::{SyncRequest, SyncResponse};
 use libp2p::{
     swarm::{Swarm, SwarmEvent, dial_opts::DialOpts},
     Multiaddr, PeerId,
@@ -103,8 +103,6 @@ pub async fn announce_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::err
 pub async fn peers_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (mut swarm, _) = create_swarm(None, 0).await?;
     let meta = crate::repo::meta::load_meta(cwd);
-    
-    // Bootstrap from stored peers if possible
     println!("Stored peers: {:?}", meta.peers);
 
     let key = repo_key(repo);
@@ -133,95 +131,6 @@ pub async fn peers_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-fn sync_with_peer<'a>(
-    peer: PeerId,
-    cwd: &'a Path,
-    swarm: &'a mut Swarm<RvcBehaviour>
-) -> std::pin::Pin<Box<dyn futures::Future<Output = Result<(), Box<dyn std::error::Error>>> + 'a>> {
-    Box::pin(async move {
-        // Step 1: Request Refs
-        let req_id = swarm.behaviour_mut().req_res.send_request(&peer, SyncRequest::GetRefs);
-        
-        let mut remote_refs = HashMap::new();
-        loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::Message { message: RequestResponseMessage::Response { request_id, response }, .. })) => {
-                    if request_id == req_id {
-                        if let SyncResponse::Refs(refs) = response {
-                            remote_refs = refs;
-                        }
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let local_refs = crate::repo::sync::get_local_refs(cwd);
-        if remote_refs == local_refs {
-            println!("Already up to date.");
-            return Ok(());
-        }
-
-        let mut current_remote_heads = remote_refs.clone();
-        
-        loop {
-            let missing = crate::repo::sync::find_missing_objects(cwd, local_refs.clone(), current_remote_heads.clone());
-            if missing.is_empty() {
-                crate::repo::sync::update_refs(cwd, &remote_refs);
-                println!("Sync complete.");
-                break;
-            }
-
-            let obj_req_id = swarm.behaviour_mut().req_res.send_request(&peer, SyncRequest::GetObjects(missing.clone()));
-            let mut fetched_objects = Vec::new();
-            
-            loop {
-                match swarm.select_next_some().await {
-                    SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::Message { message: RequestResponseMessage::Response { request_id, response }, .. })) => {
-                        if request_id == obj_req_id {
-                            if let SyncResponse::Objects(objs) = response {
-                                fetched_objects = objs;
-                            }
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            crate::repo::sync::store_objects(cwd, fetched_objects);
-
-            // Calculate parents to fetch next
-            let mut next_heads = HashMap::new();
-            let store = crate::core::store::FsObjectStore::new(cwd);
-            for hash in missing.iter() {
-                if let Ok(oid) = crate::core::types::Oid::from_hex(&hash) {
-                    if let Ok(Some(obj)) = store.get(&oid) {
-                        match obj {
-                            crate::core::types::Object::Commit(c) => {
-                                for p in c.parents {
-                                    next_heads.insert(p.clone(), p);
-                                }
-                                next_heads.insert(c.tree.clone(), c.tree.clone());
-                            }
-                            crate::core::types::Object::Tree(entries) => {
-                                for e in entries {
-                                    let hex = e.oid.to_hex();
-                                    next_heads.insert(hex.clone(), hex);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            current_remote_heads = next_heads;
-        }
-
-        Ok(())
-    })
-}
 
 pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (mut swarm, _) = create_swarm(None, 0).await?;
@@ -278,7 +187,7 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                     if peer_id == peer {
                         println!("Connected, starting sync...");
-                        sync_with_peer(peer, cwd, &mut swarm).await?;
+                        crate::sync::manager::sync_with_peer(peer, cwd, &mut swarm).await?;
                         break;
                     }
                 }

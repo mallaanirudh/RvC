@@ -1,18 +1,19 @@
-use crate::network::protocol::{SyncRequest, SyncResponse};
-use crate::repo::sync::{get_local_refs, get_objects, update_refs, store_objects, find_missing_objects};
-use libp2p::PeerId;
-use std::path::{Path, PathBuf};
-use crate::network::behaviour::RvcEvent;
+pub mod messages;
+pub mod protocol;
+pub mod manager;
 
-pub fn handle_request(repo: &Path, req: SyncRequest) -> SyncResponse {
+use std::path::Path;
+use crate::repo::sync::{get_local_refs, get_objects};
+
+pub fn handle_request(repo: &Path, req: messages::SyncRequest) -> messages::SyncResponse {
     match req {
-        SyncRequest::GetRefs => {
+        messages::SyncRequest::GetRefs => {
             let refs = get_local_refs(repo);
-            SyncResponse::Refs(refs)
+            messages::SyncResponse::Refs(refs)
         }
-        SyncRequest::GetObjects(hashes) => {
+        messages::SyncRequest::GetObjects(hashes) => {
             let objects = get_objects(repo, hashes);
-            SyncResponse::Objects(objects)
+            messages::SyncResponse::Objects(objects)
         }
     }
 }
