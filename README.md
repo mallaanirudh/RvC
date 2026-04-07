@@ -9,7 +9,7 @@ Unlike traditional version control systems that rely on central servers (like Gi
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
 - **Decentralized Synchronization**: Sync repositories directly peer-to-peer without a central authority.
 - **P2P Discovery**: 
@@ -22,7 +22,7 @@ Unlike traditional version control systems that rely on central servers (like Gi
 
 ---
 
-## 🏗 Architecture
+##  Architecture
 
 RvC is built on a three-layer architecture:
 
@@ -32,7 +32,7 @@ RvC is built on a three-layer architecture:
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -71,7 +71,7 @@ For users who prefer pre-compiled binaries:
 
 ---
 
-## 📖 Command Reference
+##  Command Reference
 
 ### Core Version Control
 
@@ -96,7 +96,7 @@ For users who prefer pre-compiled binaries:
 
 ---
 
-## 🛠 Advanced Usage: Peer-to-Peer Sync
+##  Advanced Usage: Peer-to-Peer Sync
 
 To synchronize changes between two machines:
 
@@ -113,7 +113,7 @@ RvC will automatically find Machine A, identify any missing commits, fetch them,
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
