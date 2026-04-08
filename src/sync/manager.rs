@@ -13,34 +13,50 @@ async fn send_and_wait(
     peer: &PeerId,
     request: SyncRequest,
 ) -> Result<SyncResponse, Box<dyn std::error::Error>> {
-    let req_id = swarm.behaviour_mut().req_res.send_request(peer, request);
-    let timeout = tokio::time::Duration::from_secs(15);
+    let mut last_error = None;
+    for attempt in 1..=3 {
+        if attempt > 1 {
+            println!("Retrying request to {:?} (attempt {}/3)...", peer, attempt);
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
 
-    match tokio::time::timeout(timeout, async {
-        loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::Message {
-                    message: RequestResponseMessage::Response { request_id, response },
-                    ..
-                })) if request_id == req_id => {
-                    return Ok(response);
+        let req_id = swarm.behaviour_mut().req_res.send_request(peer, request.clone());
+        let timeout = tokio::time::Duration::from_secs(30);
+
+        match tokio::time::timeout(timeout, async {
+            loop {
+                match swarm.select_next_some().await {
+                    SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::Message {
+                        message: RequestResponseMessage::Response { request_id, response },
+                        ..
+                    })) if request_id == req_id => {
+                        return Ok(response);
+                    }
+                    SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::OutboundFailure {
+                        request_id,
+                        error,
+                        ..
+                    })) if request_id == req_id => {
+                        return Err(format!("Request failed: {:?}", error).into());
+                    }
+                    _ => {} // drain other events
                 }
-                SwarmEvent::Behaviour(RvcEvent::ReqRes(RequestResponseEvent::OutboundFailure {
-                    request_id,
-                    error,
-                    ..
-                })) if request_id == req_id => {
-                    return Err(format!("Request failed: {:?}", error).into());
-                }
-                _ => {} // drain other events
+            }
+        })
+        .await
+        {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => {
+                println!("Attempt {} failed: {}", attempt, e);
+                last_error = Some(e);
+            }
+            Err(_) => {
+                println!("Attempt {} timed out", attempt);
+                last_error = Some("Request timed out".into());
             }
         }
-    })
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => Err("Request timed out after 15s".into()),
     }
+    Err(last_error.unwrap_or_else(|| "All sync attempts failed".into()))
 }
 
 pub fn sync_with_peer<'a>(

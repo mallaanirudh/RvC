@@ -16,12 +16,32 @@ async fn main() -> Result<()> {
         commands::Commands::Log => commands::log::execute(&cwd)?,
         commands::Commands::Status => commands::status::execute(&cwd)?, 
         commands::Commands::Diff => commands::diff::execute(&cwd)?, 
-        commands::Commands::Node {port  } => { network::node::run_node(port, None).await.unwrap();},
-        commands::Commands::Start { bootstrap, port } => { network::node::run_node(port, bootstrap).await.unwrap();},
-        commands::Commands::Announce { repo } => { network::node::announce_cmd(&cwd, &repo).await.unwrap();},
-        commands::Commands::Peers { repo } => { network::node::peers_cmd(&cwd, &repo).await.unwrap();},
-        commands::Commands::Sync { repo } => { 
-            if let Err(e) = network::node::sync_cmd(&cwd, &repo).await {
+        commands::Commands::Node { port } => { 
+            if let Err(e) = network::node::run_node(port, None).await {
+                eprintln!("Node error: {}", e);
+                std::process::exit(1);
+            }
+        },
+        commands::Commands::Start { bootstrap, port } => { 
+            if let Err(e) = network::node::run_node(port, bootstrap).await {
+                eprintln!("Start error: {}", e);
+                std::process::exit(1);
+            }
+        },
+        commands::Commands::Announce { repo, port } => { 
+            if let Err(e) = network::node::announce_cmd(&cwd, &repo, port).await {
+                eprintln!("Announce error: {}", e);
+                std::process::exit(1);
+            }
+        },
+        commands::Commands::Peers { repo } => { 
+            if let Err(e) = network::node::peers_cmd(&cwd, &repo).await {
+                eprintln!("Peers error: {}", e);
+                std::process::exit(1);
+            }
+        },
+        commands::Commands::Sync { repo, port } => { 
+            if let Err(e) = network::node::sync_cmd(&cwd, &repo, port).await {
                 eprintln!("Sync error: {}", e);
                 std::process::exit(1);
             }

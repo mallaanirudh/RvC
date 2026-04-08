@@ -101,7 +101,7 @@ fn find_working_directory_files(repo: &Path) -> Result<Vec<String>> {
     {
         let path = entry.path();
 
-        if path.starts_with(repo.join(".minigit")) {
+        if path.starts_with(repo.join(".rvc")) {
             continue;
         }
         
@@ -125,7 +125,7 @@ fn compute_file_oid(repo: &Path, file_path: &str) -> Result<String> {
 fn print_status(status: &Status) {
     if !status.staged_changes.is_empty() {
         println!("Changes to be committed:");
-        println!("  (use 'minigit commit' to save changes)");
+        println!("  (use 'rvc commit' to save changes)");
         for change in &status.staged_changes {
             println!("    {}", change);
         }
@@ -134,7 +134,7 @@ fn print_status(status: &Status) {
 
     if !status.unstaged_changes.is_empty() {
         println!("Changes not staged for commit:");
-        println!("  (use 'minigit add <file>' to update what will be committed)");
+        println!("  (use 'rvc add <file>' to update what will be committed)");
         for change in &status.unstaged_changes {
             println!("    {}", change);
         }

@@ -20,6 +20,9 @@ impl Oid {
     
     pub fn from_hex(hex_str: &str) -> anyhow::Result<Self> {
         let bytes = hex::decode(hex_str)?;
+        if bytes.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid OID length: expected 32 bytes (64 hex characters), got {} bytes", bytes.len()));
+        }
         let mut array = [0u8; 32];
         array.copy_from_slice(&bytes);
         Ok(Oid(array))

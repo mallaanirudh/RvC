@@ -41,56 +41,106 @@ pub async fn run_node(port: Option<u16>, bootstrap: Option<String>) -> Result<()
         swarm.dial(addr.clone())?;
     }
 
-    let mut heartbeat = tokio::time::interval(tokio::time::Duration::from_millis(100));
+    loop {
+        match swarm.select_next_some().await {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                println!("Listening on {address}");
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                swarm.behaviour_mut().kad.add_address(&peer_id, endpoint.get_remote_address().clone());
+                let _ = swarm.behaviour_mut().kad.bootstrap();
+            }
+            SwarmEvent::Behaviour(event) => {
+                match event {
+                    RvcEvent::Mdns(MdnsEvent::Discovered(list)) => {
+                        for (peer, addr) in list {
+                            swarm.behaviour_mut().kad.add_address(&peer, addr.clone());
+                        }
+                    }
+                    RvcEvent::ReqRes(RequestResponseEvent::Message { peer: _peer, message }) => {
+                        match message {
+                            RequestResponseMessage::Request { request, channel, .. } => {
+                                if let Ok(repo) = std::env::current_dir() {
+                                    println!("--- INCOMING REQUEST ---");
+                                    println!("Repo Path: {:?}", repo.canonicalize().unwrap_or(repo.clone()));
+                                    let response = crate::sync::handle_request(&repo, request);
+                                    match swarm.behaviour_mut().req_res.send_response(channel, response) {
+                                        Ok(_) => println!("Response successfully queued."),
+                                        Err(_) => println!("Error: Response channel closed."),
+                                    }
+                                }
+                            }
+                            RequestResponseMessage::Response { .. } => {}
+                        }
+                    }
+                    RvcEvent::ReqRes(RequestResponseEvent::InboundFailure { error, .. }) => {
+                        println!("Inbound request failed: {:?}", error);
+                    }
+                    RvcEvent::ReqRes(RequestResponseEvent::OutboundFailure { error, .. }) => {
+                        println!("Outbound request failed: {:?}", error);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+pub async fn announce_cmd(_cwd: &Path, repo: &str, port: Option<u16>) -> Result<(), Box<dyn std::error::Error>> {
+    let identity_port = port.unwrap_or(4001);
+    // Get the actual identity we want to announce for
+    let target_identity = load_or_generate_identity(identity_port);
+    let target_peer_id = target_identity.peer_id;
+
+    // Create a temporary swarm with a DIFFERENT identity (port 0) 
+    // so it can connect to the local node if it's running with the same port-based identity.
+    let (mut swarm, _) = create_swarm(None, 0).await?;
+    
+    println!("--- ANNOUNCE START ---");
+    println!("Target Repository: {}", repo);
+    println!("Announcing Peer ID: {}", target_peer_id);
+    println!("Searching for peers to join the network...");
+    
+    let key = repo_key(repo);
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(30));
+    tokio::pin!(timeout);
+    
+    let mut announced = false;
 
     loop {
         tokio::select! {
-            _ = heartbeat.tick() => {
-                // Drive the swarm to flush background tasks/responses even when idle
-                let _ = futures::future::poll_fn(|cx| {
-                    let _ = swarm.poll_next_unpin(cx);
-                    std::task::Poll::Pending::<()>
-                });
+            _ = &mut timeout => {
+                if !announced {
+                   return Err(anyhow::anyhow!("Announcement timed out: No peers found within 30s. Make sure another node is running!").into());
+                }
+                break;
             }
             event = swarm.select_next_some() => {
                 match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        println!("Listening on {address}");
+                        println!("Discovery node listening on {}", address);
                     }
-                    SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                        swarm.behaviour_mut().kad.add_address(&peer_id, endpoint.get_remote_address().clone());
-                        let _ = swarm.behaviour_mut().kad.bootstrap();
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        println!("Connected to peer: {}. Publishing record...", peer_id);
+                        let record = Record {
+                            key: key.clone(),
+                            value: target_peer_id.to_bytes(),
+                            publisher: None,
+                            expires: None,
+                        };
+                        let _ = swarm.behaviour_mut().kad.put_record(record, libp2p::kad::Quorum::One);
                     }
-                    SwarmEvent::Behaviour(event) => {
-                        match event {
-                            RvcEvent::Mdns(MdnsEvent::Discovered(list)) => {
-                                for (peer, addr) in list {
-                                    swarm.behaviour_mut().kad.add_address(&peer, addr.clone());
-                                }
+                    SwarmEvent::Behaviour(RvcEvent::Kad(KadEvent::OutboundQueryProgressed { result: QueryResult::PutRecord(res), .. })) => {
+                        match res {
+                            Ok(_) => { 
+                                println!("Announced successfully! Other nodes can now find {} via {}", repo, target_peer_id);
+                                announced = true;
+                                break; 
                             }
-                            RvcEvent::ReqRes(RequestResponseEvent::Message { peer: _peer, message }) => {
-                                match message {
-                                    RequestResponseMessage::Request { request, channel, .. } => {
-                                        if let Ok(repo) = std::env::current_dir() {
-                                            println!("--- INCOMING REQUEST ---");
-                                            println!("Repo Path: {:?}", repo.canonicalize().unwrap_or(repo.clone()));
-                                            let response = crate::sync::handle_request(&repo, request);
-                                            match swarm.behaviour_mut().req_res.send_response(channel, response) {
-                                                Ok(_) => println!("Response successfully queued."),
-                                                Err(_) => println!("Error: Response channel closed."),
-                                            }
-                                        }
-                                    }
-                                    RequestResponseMessage::Response { .. } => {}
-                                }
+                            Err(e) => {
+                                println!("PutRecord attempted but failed: {:?}. Continuing to seek peers...", e);
                             }
-                            RvcEvent::ReqRes(RequestResponseEvent::InboundFailure { error, .. }) => {
-                                println!("Inbound request failed: {:?}", error);
-                            }
-                            RvcEvent::ReqRes(RequestResponseEvent::OutboundFailure { error, .. }) => {
-                                println!("Outbound request failed: {:?}", error);
-                            }
-                            _ => {}
                         }
                     }
                     _ => {}
@@ -98,31 +148,12 @@ pub async fn run_node(port: Option<u16>, bootstrap: Option<String>) -> Result<()
             }
         }
     }
-}
-
-pub async fn announce_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut swarm, _) = create_swarm(None, 4001).await?;
-    let key = repo_key(repo);
-    let record = Record {
-        key,
-        value: swarm.local_peer_id().to_bytes(),
-        publisher: None,
-        expires: None,
-    };
-    let _ = swarm.behaviour_mut().kad.put_record(record, libp2p::kad::Quorum::One);
-
-    loop {
-        match swarm.select_next_some().await {
-            SwarmEvent::Behaviour(RvcEvent::Kad(KadEvent::OutboundQueryProgressed { result: QueryResult::PutRecord(res), .. })) => {
-                match res {
-                    Ok(_) => { println!("Announced successfully"); break; }
-                    Err(e) => { println!("Failed to announce: {:?}", e); break; }
-                }
-            }
-            _ => {}
-        }
+    
+    if announced {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Failed to announce after exhausting discovery options.").into())
     }
-    Ok(())
 }
 
 pub async fn peers_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -157,8 +188,9 @@ pub async fn peers_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error:
 }
 
 
-pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut swarm, _) = create_swarm(None, 0).await?;
+pub async fn sync_cmd(cwd: &Path, repo: &str, port: Option<u16>) -> Result<(), Box<dyn std::error::Error>> {
+    let identity_port = port.unwrap_or(0);
+    let (mut swarm, _) = create_swarm(None, identity_port).await?;
     let meta = crate::repo::meta::load_meta(cwd);
     
     // We can try to dial stored peers first if there are any that we have the address for...
@@ -197,7 +229,12 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
                             
                             if swarm.is_connected(&peer) {
                                 println!("Peer {} already connected. Starting sync...", peer);
-                                return crate::sync::manager::sync_with_peer(peer, cwd, &mut swarm).await;
+                                if let Err(e) = crate::sync::manager::sync_with_peer(peer, cwd, &mut swarm).await {
+                                    println!("Sync with peer {} failed: {}. Continuing discovery...", peer, e);
+                                } else {
+                                    println!("Sync with peer {} successful!", peer);
+                                    return Ok(());
+                                }
                             } else {
                                 println!("Dialing discovered peer: {}", peer);
                                 let _ = swarm.dial(peer);
@@ -212,7 +249,12 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
                                 
                                 if swarm.is_connected(&peer_id) {
                                     println!("Peer {} already connected (DHT). Starting sync...", peer_id);
-                                    return crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await;
+                                    if let Err(e) = crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await {
+                                        println!("Sync with peer {} failed: {}. Continuing discovery...", peer_id, e);
+                                    } else {
+                                        println!("Sync with peer {} successful!", peer_id);
+                                        return Ok(());
+                                    }
                                 } else {
                                     println!("Dialing peer from DHT: {}", peer_id);
                                     let _ = swarm.dial(peer_id);
@@ -223,7 +265,12 @@ pub async fn sync_cmd(cwd: &Path, repo: &str) -> Result<(), Box<dyn std::error::
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                         if Some(peer_id) == target_peer {
                             println!("Connection established to {}. Starting sync...", peer_id);
-                            return crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await;
+                            if let Err(e) = crate::sync::manager::sync_with_peer(peer_id, cwd, &mut swarm).await {
+                                println!("Sync with peer {} failed: {}. Continuing discovery...", peer_id, e);
+                            } else {
+                                println!("Sync with peer {} successful!", peer_id);
+                                return Ok(());
+                            }
                         }
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), error, .. } => {

@@ -31,12 +31,16 @@ pub enum Commands {
     },
     Announce {
         repo: String,
+        #[arg(long)]
+        port: Option<u16>,
     },
     Peers {
         repo: String,
     },
     Sync {
         repo: String,
+        #[arg(long)]
+        port: Option<u16>,
     },
     Checkout {
         hash: String,
