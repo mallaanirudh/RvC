@@ -1,7 +1,6 @@
 # 🦀 RvC: Remote Version Control
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)]()
 
 **RvC (Remote Version Control)** is a decentralized, peer-to-peer (P2P) version control system designed for serverless collaboration. Built entirely in Rust, it combines a Git-compatible content-addressable object model with a modern P2P networking stack using `libp2p`.
@@ -10,7 +9,7 @@ Unlike traditional version control systems that rely on central servers (like Gi
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
 - **Decentralized Synchronization**: Sync repositories directly peer-to-peer without a central authority.
 - **P2P Discovery**: 
@@ -23,7 +22,7 @@ Unlike traditional version control systems that rely on central servers (like Gi
 
 ---
 
-## 🏗 Architecture
+##  Architecture
 
 RvC is built on a three-layer architecture:
 
@@ -33,7 +32,7 @@ RvC is built on a three-layer architecture:
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -72,7 +71,7 @@ For users who prefer pre-compiled binaries:
 
 ---
 
-## 📖 Command Reference
+##  Command Reference
 
 ### Core Version Control
 
@@ -97,7 +96,7 @@ For users who prefer pre-compiled binaries:
 
 ---
 
-## 🛠 Advanced Usage: Peer-to-Peer Sync
+##  Advanced Usage: Peer-to-Peer Sync
 
 To synchronize changes between two machines:
 
@@ -114,7 +113,7 @@ RvC will automatically find Machine A, identify any missing commits, fetch them,
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
